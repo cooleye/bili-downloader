@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 
 import yt_dlp
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -19,8 +19,9 @@ BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
 DOWNLOAD_DIR = BASE_DIR / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
+COOKIES_FILE = BASE_DIR / "cookies.txt"
 
-app = FastAPI(title="Bilibili 视频下载器")
+app = FastAPI(title="视频下载器")
 tasks: dict = {}
 
 USER_AGENT = (
@@ -73,6 +74,45 @@ def safe_name(s: str, maxlen: int = 80) -> str:
     return re.sub(r'[\\/*?:"<>|]', "_", s)[:maxlen].strip()
 
 
+def ydl_opts(**extra) -> dict:
+    """Build yt-dlp options, including cookies file if present."""
+    opts = {**YDL_BASE, **extra}
+    if COOKIES_FILE.exists():
+        opts["cookiefile"] = str(COOKIES_FILE)
+    return opts
+
+# ── Cookies API ──
+
+@app.get("/api/cookies")
+def cookies_status():
+    """Check if cookies file is loaded."""
+    has_cookies = COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 50
+    return {
+        "loaded": has_cookies,
+        "size": COOKIES_FILE.stat().st_size if COOKIES_FILE.exists() else 0,
+    }
+
+
+@app.post("/api/cookies")
+async def upload_cookies(file: UploadFile = File(...)):
+    """Upload cookies.txt file."""
+    if not file.filename or not file.filename.endswith(".txt"):
+        raise HTTPException(400, "请上传 .txt 格式的 cookies 文件")
+    content = await file.read()
+    if len(content) < 20:
+        raise HTTPException(400, "文件内容为空")
+    COOKIES_FILE.write_bytes(content)
+    return {"success": True, "size": len(content)}
+
+
+@app.delete("/api/cookies")
+def clear_cookies():
+    """Clear uploaded cookies."""
+    if COOKIES_FILE.exists():
+        COOKIES_FILE.unlink()
+    return {"success": True}
+
+
 # ── Frontend ──
 
 @app.get("/")
@@ -86,7 +126,7 @@ def index():
 def get_info(url: str = Query(...)):
     """获取视频元数据和可用分辨率"""
     try:
-        with yt_dlp.YoutubeDL({**YDL_BASE}) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as e:
         raise HTTPException(400, f"获取信息失败: {e}")
@@ -159,13 +199,12 @@ def start_download(req: DownloadReq):
                 task["progress"] = 100
                 task["status"] = "merging"
 
-        opts = {
-            **YDL_BASE,
-            "format": fmt,
-            "outtmpl": str(DOWNLOAD_DIR / f"%(title)s_{task_id}.%(ext)s"),
-            "merge_output_format": "mp4",
-            "progress_hooks": [hook],
-        }
+        opts = ydl_opts(
+            format=fmt,
+            outtmpl=str(DOWNLOAD_DIR / f"%(title)s_{task_id}.%(ext)s"),
+            merge_output_format="mp4",
+            progress_hooks=[hook],
+        )
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(req.url, download=True)

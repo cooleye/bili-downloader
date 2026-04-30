@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bilibili 视频下载</title>
+<title>视频下载工具</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -113,6 +113,37 @@
   .success-box p { font-size: 15px; color: #2e7d32; font-weight: 600; margin-bottom: 8px; }
   .success-box .file-info { font-size: 13px; color: #555; font-weight: 400; word-break: break-all; }
 
+  /* Cookies */
+  .cookies-summary {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none;
+  }
+  .cookies-summary .indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-ok { background: #00c853; }
+  .dot-miss { background: #ff9800; }
+  .cookies-body { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+  .cookies-body .hint {
+    font-size: 12px; color: #999; line-height: 1.6; margin-bottom: 10px;
+  }
+  .cookies-body .hint code {
+    background: #f5f5f5; padding: 1px 5px; border-radius: 3px; font-size: 12px;
+  }
+  .cookies-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .cookies-row input[type=file] { display: none; }
+  .cookies-row .file-label {
+    padding: 8px 16px; background: #f5f5f5; border: 1.5px dashed #ccc;
+    border-radius: 6px; font-size: 13px; cursor: pointer; transition: all .2s;
+  }
+  .cookies-row .file-label:hover { border-color: #fb7299; background: #fff0f5; }
+  .btn-sm { padding: 8px 16px; font-size: 13px; }
+  .btn-outline { background: transparent; border: 1.5px solid #e0e0e0; }
+  .btn-outline:hover:not(:disabled) { border-color: #e53935; color: #e53935; }
+  .cookies-status { font-size: 13px; color: #666; margin-top: 6px; }
+
   /* Utility */
   .hidden { display: none !important; }
   hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
@@ -132,15 +163,40 @@
       <rect x="2" y="4" width="20" height="16" rx="2"/>
       <polygon points="10,8 16,12 10,16" fill="#fb7299" stroke="none"/>
     </svg>
-    Bilibili 视频下载
+    视频下载
   </h1>
-  <p class="subtitle">粘贴视频链接，选择分辨率，一键下载 MP4</p>
+  <p class="subtitle">支持 Bilibili / YouTube / 抖音，粘贴链接一键下载 MP4</p>
 
   <!-- Input -->
   <div class="card">
     <div class="input-row">
-      <input type="url" id="urlInput" placeholder="https://www.bilibili.com/video/BV1..." autofocus>
+      <input type="url" id="urlInput" placeholder="Bilibili / YouTube / 抖音 视频链接..." autofocus>
       <button class="btn btn-primary" id="fetchBtn">获取信息</button>
+    </div>
+  </div>
+
+  <!-- Cookies -->
+  <div class="card" id="cookiesCard">
+    <div class="cookies-summary" id="cookiesToggle">
+      <span style="font-size:14px;font-weight:600">🍪 Cookies</span>
+      <span class="indicator" id="cookiesIndicator">
+        <span class="dot dot-miss" id="cookiesDot"></span>
+        <span id="cookiesLabel">抖音需要 cookies，点击设置</span>
+      </span>
+    </div>
+    <div class="cookies-body hidden" id="cookiesBody">
+      <div class="hint">
+        抖音需要浏览器 cookies 才能下载。<br>
+        导出方法：浏览器安装 <code>Get cookies.txt</code> 扩展 → 访问 douyin.com → 导出 cookies → 上传
+      </div>
+      <div class="cookies-row">
+        <label class="file-label" id="cookiesFileLabel">
+          📄 选择 cookies.txt
+          <input type="file" id="cookiesFileInput" accept=".txt">
+        </label>
+        <button class="btn btn-sm btn-outline hidden" id="cookiesClearBtn">清除</button>
+        <span class="cookies-status" id="cookiesStatus"></span>
+      </div>
     </div>
   </div>
 
@@ -375,6 +431,70 @@ function triggerDownload() {
   show(SUCCESS_CARD);
   DOWNLOAD_BTN.disabled = false;
 }
+
+// ── Cookies ──
+const COOKIES_TOGGLE   = $('cookiesToggle');
+const COOKIES_BODY     = $('cookiesBody');
+const COOKIES_DOT      = $('cookiesDot');
+const COOKIES_LABEL    = $('cookiesLabel');
+const COOKIES_FILE_INP = $('cookiesFileInput');
+const COOKIES_CLEAR_BTN = $('cookiesClearBtn');
+const COOKIES_STATUS   = $('cookiesStatus');
+
+// Toggle cookies section
+COOKIES_TOGGLE.addEventListener('click', () => {
+  COOKIES_BODY.classList.toggle('hidden');
+});
+
+// Check cookies status on load
+async function checkCookies() {
+  try {
+    const r = await fetch('/api/cookies');
+    const d = await r.json();
+    if (d.loaded) {
+      COOKIES_DOT.className = 'dot dot-ok';
+      COOKIES_LABEL.textContent = `cookies 已加载 (${(d.size / 1024).toFixed(1)}KB)`;
+      show(COOKIES_CLEAR_BTN);
+    } else {
+      COOKIES_DOT.className = 'dot dot-miss';
+      COOKIES_LABEL.textContent = '抖音需要 cookies，点击设置';
+      hide(COOKIES_CLEAR_BTN);
+    }
+  } catch (_) {
+    COOKIES_DOT.className = 'dot dot-miss';
+    COOKIES_LABEL.textContent = 'cookies 状态未知';
+  }
+}
+
+// Upload cookies
+COOKIES_FILE_INP.addEventListener('change', async () => {
+  const file = COOKIES_FILE_INP.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  COOKIES_STATUS.textContent = '上传中...';
+  try {
+    const r = await fetch('/api/cookies', { method: 'POST', body: form });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.detail); }
+    COOKIES_STATUS.textContent = '✅ cookies 上传成功！';
+    checkCookies();
+  } catch (e) {
+    COOKIES_STATUS.textContent = '❌ ' + e.message;
+  }
+});
+
+// Clear cookies
+COOKIES_CLEAR_BTN.addEventListener('click', async () => {
+  try {
+    await fetch('/api/cookies', { method: 'DELETE' });
+    COOKIES_STATUS.textContent = '已清除 cookies';
+    checkCookies();
+  } catch (_) {
+    COOKIES_STATUS.textContent = '清除失败';
+  }
+});
+
+checkCookies();
 
 // Enter key to trigger fetch
 URL_INPUT.addEventListener('keydown', e => {

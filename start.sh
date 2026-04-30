@@ -24,7 +24,7 @@ fi
 WSL_IP=$(ip addr show eth0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "127.0.0.1")
 
 echo "========================================"
-echo "  Bilibili / YouTube 视频下载器"
+echo "  视频下载器 (Bilibili / YouTube / 抖音)"
 echo "========================================"
 echo ""
 echo "  Windows 访问地址:"
