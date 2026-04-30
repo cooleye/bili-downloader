@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Bilibili 视频下载器 - 后端"""
 
+import os
 import re
+import socket
+import subprocess
 import time
 import uuid
 import threading
@@ -34,6 +37,30 @@ YDL_BASE = {
         "Referer": "https://www.bilibili.com/",
     },
 }
+
+# Proxy: env var or auto-detect WSL2 gateway
+_proxy = os.environ.get("YT_DLP_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+if not _proxy:
+    try:
+        gw = subprocess.run(
+            ["ip", "route"], capture_output=True, text=True, timeout=3
+        ).stdout
+        m = re.search(r"default via (\S+)", gw)
+        if m:
+            gw_ip = m.group(1)
+            for port in (7891, 7890, 1080, 7897, 8080, 8899):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.5)
+                if sock.connect_ex((gw_ip, port)) == 0:
+                    _proxy = f"http://{gw_ip}:{port}"
+                    sock.close()
+                    break
+                sock.close()
+    except Exception:
+        pass
+
+if _proxy:
+    YDL_BASE["proxy"] = _proxy
 
 # Clean old files (>24h) on startup
 now = time.time()
@@ -71,18 +98,10 @@ def get_info(url: str = Query(...)):
             h = f.get("height", 0)
             if h <= 0:
                 continue
-            if h <= 360:
-                available.add("360p")
-            elif h <= 480:
-                available.add("480p")
-            elif h <= 720:
-                available.add("720p")
-            elif h <= 1080:
-                available.add("1080p")
-            else:
-                available.add(f"{h}p")
+            label = next((l for limit, l in [(360,"360p"),(480,"480p"),(720,"720p"),(1080,"1080p"),(1440,"1440p"),(2160,"2160p")] if h <= limit), f"{h}p")
+            available.add(label)
 
-    order = ["360p", "480p", "720p", "1080p"]
+    order = ["360p", "480p", "720p", "1080p", "1440p", "2160p"]
     formats = [r for r in order if r in available]
     extras = sorted(
         [r for r in available if r not in order],
@@ -126,7 +145,7 @@ def start_download(req: DownloadReq):
     tasks[task_id] = task
 
     def worker():
-        hmap = {"360p": 360, "480p": 480, "720p": 720, "1080p": 1080}
+        hmap = {"360p": 360, "480p": 480, "720p": 720, "1080p": 1080, "1440p": 1440, "2160p": 2160}
         max_h = hmap.get(req.resolution, 720)
         fmt = f"bestvideo[height<={max_h}]+bestaudio/best[height<={max_h}]"
 
@@ -198,4 +217,4 @@ def get_file(task_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8899, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8899)
