@@ -34,7 +34,13 @@ YDL_BASE = {
     "no_warnings": True,
     "http_headers": {
         "User-Agent": USER_AGENT,
-        "Referer": "https://www.bilibili.com/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    },
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android", "web"],
+        },
     },
 }
 
@@ -164,6 +170,7 @@ def start_download(req: DownloadReq):
             "format": fmt,
             "outtmpl": str(DOWNLOAD_DIR / f"%(title)s_{task_id}.%(ext)s"),
             "merge_output_format": "mp4",
+            "throttled_rate": 100000000,
             "progress_hooks": [hook],
         }
         try:
