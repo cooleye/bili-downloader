@@ -113,6 +113,94 @@
   .success-box p { font-size: 15px; color: #2e7d32; font-weight: 600; margin-bottom: 8px; }
   .success-box .file-info { font-size: 13px; color: #555; font-weight: 400; word-break: break-all; }
 
+  /* Cookies */
+  .cookies-summary {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none;
+  }
+  .cookies-summary .indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-ok { background: #00c853; }
+  .dot-miss { background: #ff9800; }
+  .cookies-body { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+  .cookies-body .hint {
+    font-size: 12px; color: #999; line-height: 1.6; margin-bottom: 10px;
+  }
+  .cookies-body .hint code {
+    background: #f5f5f5; padding: 1px 5px; border-radius: 3px; font-size: 12px;
+  }
+  .cookies-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .cookies-row input[type=file] { display: none; }
+  .cookies-row .file-label {
+    padding: 8px 16px; background: #f5f5f5; border: 1.5px dashed #ccc;
+    border-radius: 6px; font-size: 13px; cursor: pointer; transition: all .2s;
+  }
+  .cookies-row .file-label:hover { border-color: #fb7299; background: #fff0f5; }
+  .btn-sm { padding: 8px 16px; font-size: 13px; }
+  .btn-outline { background: transparent; border: 1.5px solid #e0e0e0; }
+  .btn-outline:hover:not(:disabled) { border-color: #e53935; color: #e53935; }
+  .cookies-status { font-size: 13px; color: #666; margin-top: 6px; }
+
+  /* Batch Download */
+  .batch-header {
+    font-size: 17px; font-weight: 700; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .batch-url-row {
+    display: flex; gap: 6px; margin-bottom: 8px; align-items: center;
+  }
+  .batch-url-row input {
+    flex: 1; padding: 10px 14px; border: 1.5px solid #e0e0e0;
+    border-radius: 8px; font-size: 14px; outline: none; transition: border-color .2s;
+  }
+  .batch-url-row input:focus { border-color: #fb7299; }
+  .batch-url-row .btn-del {
+    width: 32px; height: 32px; border: none; border-radius: 50%;
+    background: #fff0f0; color: #e53935; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    transition: all .2s;
+  }
+  .batch-url-row .btn-del:hover { background: #ffcdd2; }
+  .btn-add {
+    padding: 8px 16px; border: 1.5px dashed #ccc; border-radius: 8px;
+    background: transparent; color: #666; font-size: 14px; cursor: pointer;
+    width: 100%; transition: all .2s; margin-bottom: 16px;
+  }
+  .btn-add:hover { border-color: #fb7299; color: #fb7299; background: #fff0f5; }
+  .batch-dir { margin-bottom: 12px; }
+  .batch-dir label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; }
+  .dir-row { display: flex; gap: 8px; align-items: center; }
+  .dir-row input {
+    flex: 1; padding: 10px 14px; border: 1.5px solid #e0e0e0;
+    border-radius: 8px; font-size: 13px; outline: none; font-family: monospace;
+  }
+  .dir-row input:focus { border-color: #fb7299; }
+  .batch-res { margin: 12px 0; display: flex; align-items: center; gap: 12px; }
+  .batch-res label { font-size: 13px; font-weight: 600; }
+  .batch-res select {
+    padding: 8px 12px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+    font-size: 14px; outline: none; background: #fff;
+  }
+  .batch-res select:focus { border-color: #fb7299; }
+
+  /* Batch Progress */
+  .bp-overall { font-size: 13px; color: #666; margin-bottom: 4px; }
+  .bp-current { font-size: 13px; color: #333; font-weight: 600; margin-bottom: 10px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Batch Summary */
+  .b-summary { font-size: 14px; }
+  .b-summary p { margin: 4px 0; }
+  .b-summary .s-ok { color: #2e7d32; }
+  .b-summary .s-fail { color: #c62828; }
+  .b-detail { font-size: 12px; color: #666; margin-top: 8px; max-height: 150px; overflow-y: auto; }
+  .b-detail div { padding: 2px 0; }
+  .b-detail .d-ok { color: #2e7d32; }
+  .b-detail .d-fail { color: #c62828; }
+
   /* Utility */
   .hidden { display: none !important; }
   hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
@@ -191,6 +279,52 @@
     <div class="success-box">
       <p>下载完成!</p>
       <p class="file-info" id="fileInfo"></p>
+    </div>
+  </div>
+
+  <!-- Batch Download -->
+  <div class="card" id="batchCard">
+    <div class="batch-header">📦 批量下载</div>
+
+    <div id="batchUrlList"></div>
+    <button class="btn-add" id="addUrlBtn">+ 添加链接</button>
+
+    <hr>
+
+    <div class="batch-dir">
+      <label>保存目录</label>
+      <div class="dir-row">
+        <input type="text" id="saveDir" placeholder="默认: downloads/">
+        <button class="btn btn-sm btn-outline" id="resetDirBtn">重置</button>
+      </div>
+    </div>
+
+    <div class="batch-res">
+      <label>分辨率</label>
+      <select id="batchRes">
+        <option value="360p">360p</option>
+        <option value="480p">480p</option>
+        <option value="720p" selected>720p</option>
+        <option value="1080p">1080p</option>
+        <option value="1440p">1440p</option>
+        <option value="2160p">2160p</option>
+      </select>
+    </div>
+
+    <button class="btn btn-download" id="batchStartBtn">批量下载</button>
+
+    <div class="hidden" id="batchProgress" style="margin-top:12px">
+      <div class="bp-overall" id="bpOverall">总体进度: 0 / 0</div>
+      <div class="bp-current" id="bpCurrent">等待中...</div>
+      <div class="progress-bar-bg">
+        <div class="progress-fill" id="bpFill"></div>
+      </div>
+      <div class="progress-text"><span id="bpPct">0%</span><span class="speed" id="bpSpeed"></span></div>
+    </div>
+
+    <div class="hidden" id="batchSummary" style="margin-top:12px">
+      <div class="b-summary" id="bSummaryText"></div>
+      <div class="b-detail" id="bDetailList"></div>
     </div>
   </div>
 </div>
@@ -375,6 +509,170 @@ function triggerDownload() {
   show(SUCCESS_CARD);
   DOWNLOAD_BTN.disabled = false;
 }
+
+// ── Batch Download ──
+const BATCH_LIST     = $('batchUrlList');
+const ADD_URL_BTN    = $('addUrlBtn');
+const SAVE_DIR       = $('saveDir');
+const RESET_DIR_BTN  = $('resetDirBtn');
+const BATCH_RES      = $('batchRes');
+const BATCH_START_BTN = $('batchStartBtn');
+const BP_OVERALL     = $('bpOverall');
+const BP_CURRENT     = $('bpCurrent');
+const BP_FILL        = $('bpFill');
+const BP_PCT         = $('bpPct');
+const BP_SPEED       = $('bpSpeed');
+const BATCH_PROGRESS = $('batchProgress');
+const BATCH_SUMMARY  = $('batchSummary');
+const B_SUMMARY_TEXT = $('bSummaryText');
+const B_DETAIL_LIST  = $('bDetailList');
+
+let batchUrls = ['', '']; // start with 2 empty inputs
+let batchRunning = false;
+let batchResults = [];
+
+// Restore save dir from localStorage
+const savedDir = localStorage.getItem('batch_save_dir') || '';
+SAVE_DIR.value = savedDir;
+
+SAVE_DIR.addEventListener('input', () => {
+  localStorage.setItem('batch_save_dir', SAVE_DIR.value);
+});
+RESET_DIR_BTN.addEventListener('click', () => {
+  SAVE_DIR.value = '';
+  localStorage.removeItem('batch_save_dir');
+});
+
+function renderUrlInputs() {
+  BATCH_LIST.innerHTML = '';
+  batchUrls.forEach((val, i) => {
+    const row = document.createElement('div');
+    row.className = 'batch-url-row';
+    const inp = document.createElement('input');
+    inp.type = 'url';
+    inp.placeholder = `视频链接 ${i + 1}`;
+    inp.value = val;
+    inp.addEventListener('input', () => { batchUrls[i] = inp.value; });
+    row.appendChild(inp);
+    const del = document.createElement('button');
+    del.className = 'btn-del';
+    del.textContent = '×';
+    del.style.display = batchUrls.length > 1 ? '' : 'none';
+    del.addEventListener('click', () => { batchUrls.splice(i, 1); renderUrlInputs(); });
+    row.appendChild(del);
+    BATCH_LIST.appendChild(row);
+  });
+  updateBatchBtnLabel();
+}
+
+function updateBatchBtnLabel() {
+  const count = batchUrls.filter(u => u.trim()).length;
+  BATCH_START_BTN.textContent = count > 0 ? `批量下载 (${count} 个视频)` : '批量下载';
+}
+
+ADD_URL_BTN.addEventListener('click', () => {
+  batchUrls.push('');
+  renderUrlInputs();
+  // Scroll to new input
+  const inputs = BATCH_LIST.querySelectorAll('input');
+  if (inputs.length > 0) inputs[inputs.length - 1].focus();
+});
+
+// Batch download
+BATCH_START_BTN.addEventListener('click', async () => {
+  const urls = batchUrls.map(u => u.trim()).filter(u => u);
+  if (urls.length === 0) { setError('请输入至少一个视频链接'); return; }
+
+  const saveDir = SAVE_DIR.value.trim();
+  const res = BATCH_RES.value;
+
+  batchRunning = true;
+  batchResults = [];
+  BATCH_START_BTN.disabled = true;
+  hide(ERROR);
+  hide(BATCH_SUMMARY);
+  show(BATCH_PROGRESS);
+  BP_OVERALL.textContent = `总体进度: 0 / ${urls.length}`;
+  BP_CURRENT.textContent = '准备中...';
+  BP_FILL.style.width = '0%';
+  BP_PCT.textContent = '0%';
+  BP_SPEED.textContent = '';
+
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    BP_OVERALL.textContent = `总体进度: ${i} / ${urls.length}`;
+    BP_CURRENT.textContent = `正在获取 [${i + 1}/${urls.length}]...`;
+    BP_PCT.textContent = `${Math.round(i / urls.length * 100)}%`;
+    BP_FILL.style.width = `${Math.round(i / urls.length * 100)}%`;
+
+    try {
+      const resp = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, resolution: res, save_dir: saveDir }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.detail || '启动失败');
+      const taskId = json.task_id;
+
+      await pollBatchTask(taskId, i, urls.length, url);
+      batchResults.push({ url, success: true, error: '' });
+    } catch (e) {
+      batchResults.push({ url, success: false, error: e.message });
+    }
+  }
+
+  // Done
+  batchRunning = false;
+  BATCH_START_BTN.disabled = false;
+  hide(BATCH_PROGRESS);
+  showSummary(urls);
+});
+
+function pollBatchTask(taskId, index, total, url) {
+  return new Promise((resolve) => {
+    const poll = () => {
+      fetch(`/api/download/${taskId}/status`)
+        .then(r => r.json())
+        .then(data => {
+          const pct = data.progress || 0;
+          BP_CURRENT.textContent = `正在下载 [${index + 1}/${total}]: ${url.length > 50 ? url.slice(0, 50) + '...' : url}`;
+          BP_FILL.style.width = `${Math.round((index + pct / 100) / total * 100)}%`;
+          BP_PCT.textContent = `${Math.round((index + pct / 100) / total * 100)}%`;
+          BP_SPEED.textContent = data.speed || '';
+          BP_OVERALL.textContent = `总体进度: ${index} / ${total}`;
+
+          if (data.status === 'error') { resolve(); return; }
+          if (data.status === 'completed') {
+            BP_OVERALL.textContent = `总体进度: ${index + 1} / ${total}`;
+            BP_FILL.style.width = `${Math.round((index + 1) / total * 100)}%`;
+            BP_PCT.textContent = `${Math.round((index + 1) / total * 100)}%`;
+            BP_CURRENT.textContent = `完成 [${index + 1}/${total}]`;
+            resolve();
+            return;
+          }
+          setTimeout(poll, 1000);
+        })
+        .catch(() => { resolve(); });
+    };
+    poll();
+  });
+}
+
+function showSummary(urls) {
+  const ok = batchResults.filter(r => r.success).length;
+  const fail = batchResults.filter(r => !r.success).length;
+  B_SUMMARY_TEXT.innerHTML = `
+    <p class="${ok > 0 ? 's-ok' : ''}">✅ 成功: ${ok} 个</p>
+    ${fail > 0 ? `<p class="s-fail">❌ 失败: ${fail} 个</p>` : ''}
+  `;
+  B_DETAIL_LIST.innerHTML = batchResults.map((r, i) =>
+    `<div class="${r.success ? 'd-ok' : 'd-fail'}">${i + 1}. ${r.success ? '✅' : '❌'} ${r.url.slice(0, 60)}${r.error ? ' — ' + r.error : ''}</div>`
+  ).join('');
+  show(BATCH_SUMMARY);
+}
+
+renderUrlInputs();
 
 // Enter key to trigger fetch
 URL_INPUT.addEventListener('keydown', e => {

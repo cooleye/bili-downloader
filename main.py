@@ -132,6 +132,7 @@ def get_info(url: str = Query(...)):
 class DownloadReq(BaseModel):
     url: str
     resolution: str
+    save_dir: str = ""
 
 
 @app.post("/api/download")
@@ -165,15 +166,17 @@ def start_download(req: DownloadReq):
                 task["progress"] = 100
                 task["status"] = "merging"
 
+        output_dir = Path(req.save_dir) if req.save_dir else DOWNLOAD_DIR
         opts = {
             **YDL_BASE,
             "format": fmt,
-            "outtmpl": str(DOWNLOAD_DIR / f"%(title)s_{task_id}.%(ext)s"),
+            "outtmpl": str(output_dir / f"%(title)s_{task_id}.%(ext)s"),
             "merge_output_format": "mp4",
             "throttled_rate": 100000000,
             "progress_hooks": [hook],
         }
         try:
+            output_dir.mkdir(parents=True, exist_ok=True)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(req.url, download=True)
                 title = info.get("title", "video")
@@ -181,7 +184,7 @@ def start_download(req: DownloadReq):
                 if expected.exists():
                     task["filename"] = str(expected)
                 else:
-                    for f in DOWNLOAD_DIR.iterdir():
+                    for f in output_dir.iterdir():
                         if task_id in f.name:
                             task["filename"] = str(f)
                             break
