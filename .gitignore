@@ -10,6 +10,7 @@ downloads/*.mp4
 downloads/*.mkv
 downloads/*.webm
 downloads/*.flv
+*.part
 
 # IDE
 .vscode/

@@ -552,7 +552,7 @@ function renderUrlInputs() {
     inp.type = 'url';
     inp.placeholder = `视频链接 ${i + 1}`;
     inp.value = val;
-    inp.addEventListener('input', () => { batchUrls[i] = inp.value; });
+    inp.addEventListener('input', () => { batchUrls[i] = inp.value; updateBatchBtnLabel(); });
     row.appendChild(inp);
     const del = document.createElement('button');
     del.className = 'btn-del';

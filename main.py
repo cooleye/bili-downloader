@@ -181,11 +181,16 @@ def start_download(req: DownloadReq):
                 info = ydl.extract_info(req.url, download=True)
                 title = info.get("title", "video")
                 expected = Path(ydl.prepare_filename(info)).with_suffix(".mp4")
-                if expected.exists():
+                # prepare_filename may return intermediate format name for merged
+                # streams, so we search for the actual .mp4 output
+                candidates = sorted(output_dir.glob(f"*{task_id}.mp4"))
+                if candidates:
+                    task["filename"] = str(candidates[0])
+                elif expected.exists():
                     task["filename"] = str(expected)
                 else:
-                    for f in output_dir.iterdir():
-                        if task_id in f.name:
+                    for f in sorted(output_dir.iterdir()):
+                        if task_id in f.name and not f.name.endswith(".part"):
                             task["filename"] = str(f)
                             break
                 task["title"] = safe_name(title)
