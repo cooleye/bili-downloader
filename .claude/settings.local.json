@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3 --version)",
+      "Bash(curl -s \"http://localhost:8899/api/info?url=https://www.youtube.com/watch?v=f1dnocPQXDQ&list=PLbiuKdkIjQn6a6Vjnsqh0oo20_oe1pOeC\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s \"http://localhost:8899/api/download/0e50c3242b69/status\")",
+      "Bash(pkill -f \"python3 main.py\")",
+      "Bash(git *)",
+      "Bash(python3 *)"
+    ]
+  }
+}

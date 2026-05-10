@@ -34,6 +34,7 @@ YDL_BASE = {
     "quiet": True,
     "no_warnings": True,
     "no_check_certificate": True,
+    "noplaylist": True,
     "http_headers": {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -82,6 +83,24 @@ def safe_name(s: str, maxlen: int = 80) -> str:
     return re.sub(r'[\\/*?:"<>|]', "_", s)[:maxlen].strip()
 
 
+def _is_bilibili(url: str) -> bool:
+    return bool(re.search(r"(bilibili\.com|b23\.tv)", url, re.I))
+
+
+def _build_opts(url: str, **overrides) -> dict:
+    """构建 yt-dlp 选项，根据 URL 自动设置平台相关的请求头。"""
+    opts = {**YDL_BASE}
+    if _is_bilibili(url):
+        opts["http_headers"] = {
+            **opts.get("http_headers", {}),
+            "Referer": "https://www.bilibili.com",
+        }
+    if COOKIES_FILE.exists():
+        opts["cookiefile"] = str(COOKIES_FILE)
+    opts.update(overrides)
+    return opts
+
+
 # ── Frontend ──
 
 @app.get("/")
@@ -114,10 +133,7 @@ def delete_cookies():
 def get_info(url: str = Query(...)):
     """获取视频元数据和可用分辨率"""
     try:
-        info_opts = {**YDL_BASE}
-        if COOKIES_FILE.exists():
-            info_opts["cookiefile"] = str(COOKIES_FILE)
-        with yt_dlp.YoutubeDL(info_opts) as ydl:
+        with yt_dlp.YoutubeDL(_build_opts(url)) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as e:
         raise HTTPException(400, f"获取信息失败: {e}")
@@ -179,7 +195,7 @@ def start_download(req: DownloadReq):
     def worker():
         hmap = {"360p": 360, "480p": 480, "720p": 720, "1080p": 1080, "1440p": 1440, "2160p": 2160}
         max_h = hmap.get(req.resolution, 720)
-        fmt = f"bestvideo[height<=?{max_h}]+bestaudio/best[height<=?{max_h}]/bestvideo+bestaudio/best"
+        fmt = f"bestvideo[height<=?{max_h}]+bestaudio/best[height<=?{max_h}]/best"
 
         def hook(d):
             if d["status"] == "downloading":
@@ -194,37 +210,32 @@ def start_download(req: DownloadReq):
         output_dir = Path(req.save_dir) if req.save_dir else DOWNLOAD_DIR
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 先快速探测哪个客户端能获取信息，再下载（避免重复下载）
-        clients_to_try = [["android", "web"], ["android"], ["ios"], ["web_safari"]]
+        is_bili = _is_bilibili(req.url)
+
+        # YouTube 需要探测可用客户端，Bilibili 跳过此步骤
         chosen_clients = None
-        for i, clients in enumerate(clients_to_try):
-            probe_opts = {**YDL_BASE}
-            if i > 0:
-                probe_opts["extractor_args"] = {"youtube": {"player_client": clients, "skip": ["webpage"]}}
-            if COOKIES_FILE.exists():
-                probe_opts["cookiefile"] = str(COOKIES_FILE)
-            try:
-                with yt_dlp.YoutubeDL(probe_opts) as ydl:
-                    ydl.extract_info(req.url, download=False)
-                chosen_clients = clients
-                break
-            except Exception:
-                continue
+        if not is_bili:
+            clients_to_try = [["android", "web"], ["android"], ["ios"], ["web_safari"]]
+            for i, clients in enumerate(clients_to_try):
+                probe_opts = _build_opts(req.url)
+                if i > 0:
+                    probe_opts["extractor_args"] = {"youtube": {"player_client": clients, "skip": ["webpage"]}}
+                try:
+                    with yt_dlp.YoutubeDL(probe_opts) as ydl:
+                        ydl.extract_info(req.url, download=False)
+                    chosen_clients = clients
+                    break
+                except Exception:
+                    continue
 
-        if not chosen_clients:
-            task["status"] = "error"
-            task["error"] = "无法获取视频信息，所有客户端均失败"
-            return
+            if not chosen_clients:
+                task["status"] = "error"
+                task["error"] = "无法获取视频信息，所有客户端均失败"
+                return
 
-        # 先用 download=False 获取标题，构建确定性文件名
-        probe_opts = {**YDL_BASE, "quiet": True, "no_warnings": True}
-        if chosen_clients != ["android", "web"]:
-            probe_opts["extractor_args"] = {"youtube": {"player_client": chosen_clients, "skip": ["webpage"]}}
-        if COOKIES_FILE.exists():
-            probe_opts["cookiefile"] = str(COOKIES_FILE)
-
+        # 获取标题，构建确定性文件名
         try:
-            with yt_dlp.YoutubeDL(probe_opts) as ydl:
+            with yt_dlp.YoutubeDL(_build_opts(req.url)) as ydl:
                 info = ydl.extract_info(req.url, download=False)
                 title = info.get("title", "video")
         except Exception as e:
@@ -242,19 +253,11 @@ def start_download(req: DownloadReq):
             task["progress"] = 100
             return
 
-        # 用可用的客户端下载（只下载一次）
-        opts = {
-            **YDL_BASE,
-            "format": fmt,
-            "outtmpl": str(expected_file.with_suffix(".%(ext)s")),
-            "merge_output_format": "mp4",
-            "throttled_rate": 100000000,
-            "progress_hooks": [hook],
-        }
-        if chosen_clients != ["android", "web"]:
+        # 下载
+        opts = _build_opts(req.url, format=fmt, outtmpl=str(expected_file.with_suffix(".%(ext)s")),
+                           merge_output_format="mp4", throttled_rate=100000000, progress_hooks=[hook])
+        if not is_bili and chosen_clients and chosen_clients != ["android", "web"]:
             opts["extractor_args"] = {"youtube": {"player_client": chosen_clients, "skip": ["webpage"]}}
-        if COOKIES_FILE.exists():
-            opts["cookiefile"] = str(COOKIES_FILE)
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -262,8 +265,20 @@ def start_download(req: DownloadReq):
             task["filename"] = str(expected_file)
             task["status"] = "completed"
         except Exception as e:
+            # 如果是因为格式不可用导致失败，降级到 best 重试
+            err_msg = str(e)
+            if "Requested format is not available" in err_msg or "No video formats found" in err_msg:
+                fallback_opts = {**opts, "format": "best"}
+                try:
+                    with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                        ydl.extract_info(req.url, download=True)
+                    task["filename"] = str(expected_file)
+                    task["status"] = "completed"
+                    return
+                except Exception:
+                    pass
             task["status"] = "error"
-            task["error"] = str(e)
+            task["error"] = err_msg
 
     threading.Thread(target=worker, daemon=True).start()
     return {"task_id": task_id}
