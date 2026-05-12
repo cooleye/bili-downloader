@@ -9,6 +9,7 @@ import time
 import uuid
 import threading
 from pathlib import Path
+from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 
 import yt_dlp
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
@@ -39,34 +40,34 @@ YDL_BASE = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
     },
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android", "web"],
-            "skip": ["webpage"],
-        },
-    },
 }
 
-# Proxy: env var or auto-detect WSL2 gateway
+# Proxy: env var or auto-detect
 _proxy = os.environ.get("YT_DLP_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
 if not _proxy:
+    proxy_ports = (7890, 7891, 1080, 7897)
+    # Try localhost first (mirrored WSL2), then gateway IP
+    targets = ["127.0.0.1"]
     try:
         gw = subprocess.run(
             ["ip", "route"], capture_output=True, text=True, timeout=3
         ).stdout
         m = re.search(r"default via (\S+)", gw)
         if m:
-            gw_ip = m.group(1)
-            for port in (7891, 7890, 1080, 7897, 8080, 8899):
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.5)
-                if sock.connect_ex((gw_ip, port)) == 0:
-                    _proxy = f"http://{gw_ip}:{port}"
-                    sock.close()
-                    break
-                sock.close()
+            targets.append(m.group(1))
     except Exception:
         pass
+    for host in targets:
+        for port in proxy_ports:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.5)
+            if sock.connect_ex((host, port)) == 0:
+                _proxy = f"http://{host}:{port}"
+                sock.close()
+                break
+            sock.close()
+        if _proxy:
+            break
 
 if _proxy:
     YDL_BASE["proxy"] = _proxy
@@ -80,6 +81,19 @@ for f in DOWNLOAD_DIR.iterdir():
 
 def safe_name(s: str, maxlen: int = 80) -> str:
     return re.sub(r'[\\/*?:"<>|]', "_", s)[:maxlen].strip()
+
+
+def clean_url(url: str) -> str:
+    """Strip playlist/index params from YouTube URLs."""
+    parsed = urlparse(url)
+    if "youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc:
+        qs = parse_qs(parsed.query)
+        qs.pop("list", None)
+        qs.pop("index", None)
+        qs.pop("si", None)
+        new_qs = urlencode(qs, doseq=True)
+        parsed = parsed._replace(query=new_qs)
+    return urlunparse(parsed)
 
 
 # ── Frontend ──
@@ -110,15 +124,27 @@ def delete_cookies():
 
 # ── Video Info ──
 
+def _extract_info(url, extra_opts=None):
+    """Try with cookies, fall back to without if cookies are broken."""
+    opts = {**YDL_BASE, **(extra_opts or {})}
+    if COOKIES_FILE.exists():
+        opts["cookiefile"] = str(COOKIES_FILE)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download="format" in opts)
+    except Exception:
+        if COOKIES_FILE.exists():
+            opts.pop("cookiefile", None)
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(url, download="format" in opts)
+        raise
+
+
 @app.get("/api/info")
 def get_info(url: str = Query(...)):
     """获取视频元数据和可用分辨率"""
     try:
-        info_opts = {**YDL_BASE}
-        if COOKIES_FILE.exists():
-            info_opts["cookiefile"] = str(COOKIES_FILE)
-        with yt_dlp.YoutubeDL(info_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = _extract_info(clean_url(url))
     except Exception as e:
         raise HTTPException(400, f"获取信息失败: {e}")
 
@@ -164,9 +190,10 @@ class DownloadReq(BaseModel):
 def start_download(req: DownloadReq):
     """启动下载任务"""
     task_id = uuid.uuid4().hex[:12]
+    clean = clean_url(req.url)
     task = {
         "id": task_id,
-        "url": req.url,
+        "url": clean,
         "resolution": req.resolution,
         "status": "starting",
         "progress": 0.0,
@@ -179,7 +206,7 @@ def start_download(req: DownloadReq):
     def worker():
         hmap = {"360p": 360, "480p": 480, "720p": 720, "1080p": 1080, "1440p": 1440, "2160p": 2160}
         max_h = hmap.get(req.resolution, 720)
-        fmt = f"bestvideo[height<=?{max_h}]+bestaudio/best[height<=?{max_h}]/bestvideo+bestaudio/best"
+        fmt = f"bestvideo[height<=?{max_h}]+bestaudio/best[height<=?{max_h}]/best"
 
         def hook(d):
             if d["status"] == "downloading":
@@ -194,42 +221,13 @@ def start_download(req: DownloadReq):
         output_dir = Path(req.save_dir) if req.save_dir else DOWNLOAD_DIR
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 先快速探测哪个客户端能获取信息，再下载（避免重复下载）
-        clients_to_try = [["android", "web"], ["android"], ["ios"], ["web_safari"]]
-        chosen_clients = None
-        for i, clients in enumerate(clients_to_try):
-            probe_opts = {**YDL_BASE}
-            if i > 0:
-                probe_opts["extractor_args"] = {"youtube": {"player_client": clients, "skip": ["webpage"]}}
-            if COOKIES_FILE.exists():
-                probe_opts["cookiefile"] = str(COOKIES_FILE)
-            try:
-                with yt_dlp.YoutubeDL(probe_opts) as ydl:
-                    ydl.extract_info(req.url, download=False)
-                chosen_clients = clients
-                break
-            except Exception:
-                continue
-
-        if not chosen_clients:
-            task["status"] = "error"
-            task["error"] = "无法获取视频信息，所有客户端均失败"
-            return
-
-        # 先用 download=False 获取标题，构建确定性文件名
-        probe_opts = {**YDL_BASE, "quiet": True, "no_warnings": True}
-        if chosen_clients != ["android", "web"]:
-            probe_opts["extractor_args"] = {"youtube": {"player_client": chosen_clients, "skip": ["webpage"]}}
-        if COOKIES_FILE.exists():
-            probe_opts["cookiefile"] = str(COOKIES_FILE)
-
+        # 获取标题
         try:
-            with yt_dlp.YoutubeDL(probe_opts) as ydl:
-                info = ydl.extract_info(req.url, download=False)
-                title = info.get("title", "video")
+            info = _extract_info(clean)
+            title = info.get("title", "video")
         except Exception as e:
             task["status"] = "error"
-            task["error"] = f"获取标题失败: {e}"
+            task["error"] = f"获取信息失败: {e}"
             return
 
         safe_title = safe_name(title)
@@ -242,7 +240,7 @@ def start_download(req: DownloadReq):
             task["progress"] = 100
             return
 
-        # 用可用的客户端下载（只下载一次）
+        # 下载
         opts = {
             **YDL_BASE,
             "format": fmt,
@@ -251,14 +249,12 @@ def start_download(req: DownloadReq):
             "throttled_rate": 100000000,
             "progress_hooks": [hook],
         }
-        if chosen_clients != ["android", "web"]:
-            opts["extractor_args"] = {"youtube": {"player_client": chosen_clients, "skip": ["webpage"]}}
         if COOKIES_FILE.exists():
             opts["cookiefile"] = str(COOKIES_FILE)
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.extract_info(req.url, download=True)
+                ydl.extract_info(clean, download=True)
             task["filename"] = str(expected_file)
             task["status"] = "completed"
         except Exception as e:
