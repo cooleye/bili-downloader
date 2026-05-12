@@ -264,12 +264,9 @@ def start_download(req: DownloadReq):
         safe_title = safe_name(title)
         expected_file = output_dir / f"{safe_title}_{req.resolution}.mp4"
 
-        # 如果文件已存在，跳过下载
+        # 删除已存在的旧文件，确保重新下载
         if expected_file.exists():
-            task["filename"] = str(expected_file)
-            task["status"] = "completed"
-            task["progress"] = 100
-            return
+            expected_file.unlink()
 
         # 下载
         opts = {
@@ -277,6 +274,7 @@ def start_download(req: DownloadReq):
             "format": fmt,
             "outtmpl": str(expected_file.with_suffix(".%(ext)s")),
             "merge_output_format": "mp4",
+            "postprocessor_args": {"ffmpeg": ["-c:v", "copy", "-c:a", "aac"]},
             "throttled_rate": 100000000,
             "progress_hooks": [hook],
         }

@@ -17,7 +17,15 @@
       "Bash(pip3 show *)",
       "Bash(pip3 install *)",
       "Bash(curl -s \"http://localhost:8899/api/info?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DtJj2_tr8Mx0\")",
-      "Bash(curl -s \"http://localhost:8899/api/cookies/browser\")"
+      "Bash(curl -s \"http://localhost:8899/api/cookies/browser\")",
+      "Bash(gh auth *)",
+      "Read(//Users/kongdejian/.ssh/**)",
+      "Bash(ssh -T git@github.com)",
+      "Bash(rm -f /Users/kongdejian/Documents/trae_projects/bili-downloader/downloads/*_480p.mp4)",
+      "Bash(curl -s -X POST http://localhost:8899/api/download -H 'Content-Type: application/json' -d '{\"url\":\"https://www.youtube.com/watch?v=tJj2_tr8Mx0\",\"resolution\":\"480p\"}')",
+      "Bash(file /tmp/test_fix_*.mp4)",
+      "Bash(curl -s http://localhost:8899/api/download/968ebd64eef2/status)",
+      "Bash(curl *)"
     ]
   }
 }
