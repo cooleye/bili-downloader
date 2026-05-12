@@ -7,7 +7,17 @@
       "Bash(curl -s \"http://localhost:8899/api/download/0e50c3242b69/status\")",
       "Bash(pkill -f \"python3 main.py\")",
       "Bash(git *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(nohup python3 main.py)",
+      "Bash(echo \"Server PID: $!\")",
+      "Bash(curl -s http://localhost:8899/api/cookies/browser)",
+      "Bash(curl -s -X POST http://localhost:8899/api/cookies/browser -H 'Content-Type: application/json' -d '{\"enabled\":true}')",
+      "Bash(curl -s -X POST http://localhost:8899/api/cookies/browser -H 'Content-Type: application/json' -d '{\"enabled\":false}')",
+      "Bash(yt-dlp --cookies-from-browser chrome --cookies - \"https://www.youtube.com/watch?v=tJj2_tr8Mx0\")",
+      "Bash(pip3 show *)",
+      "Bash(pip3 install *)",
+      "Bash(curl -s \"http://localhost:8899/api/info?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DtJj2_tr8Mx0\")",
+      "Bash(curl -s \"http://localhost:8899/api/cookies/browser\")"
     ]
   }
 }

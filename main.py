@@ -23,6 +23,9 @@ COOKIES_FILE = BASE_DIR / "cookies.txt"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="Bilibili 视频下载器")
+
+# 浏览器 cookie 提取开关（默认关闭）
+USE_BROWSER_COOKIES = False
 tasks: dict = {}
 
 USER_AGENT = (
@@ -122,19 +125,47 @@ def delete_cookies():
     return {"success": True}
 
 
+# ── Browser Cookie Extraction ──
+
+@app.post("/api/cookies/browser")
+def set_browser_cookies(data: dict):
+    global USE_BROWSER_COOKIES
+    USE_BROWSER_COOKIES = data.get("enabled", False)
+    return {"success": True, "enabled": USE_BROWSER_COOKIES}
+
+@app.get("/api/cookies/browser")
+def get_browser_cookies():
+    return {"enabled": USE_BROWSER_COOKIES}
+
+
 # ── Video Info ──
 
 def _extract_info(url, extra_opts=None):
-    """Try with cookies, fall back to without if cookies are broken."""
+    """Try: browser cookies → cookiefile → no cookies."""
     opts = {**YDL_BASE, **(extra_opts or {})}
-    if COOKIES_FILE.exists():
+    if USE_BROWSER_COOKIES:
+        opts["cookiesfrombrowser"] = ["chrome"]
+        opts["js_runtimes"] = {"node": {}}
+        opts["remote_components"] = ["ejs:github"]
+    elif COOKIES_FILE.exists():
         opts["cookiefile"] = str(COOKIES_FILE)
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download="format" in opts)
     except Exception:
-        if COOKIES_FILE.exists():
-            opts.pop("cookiefile", None)
+        # Fallback: remove browser cookies, retry with cookiefile only
+        if opts.pop("cookiesfrombrowser", None):
+            opts.pop("js_runtimes", None)
+            opts.pop("remote_components", None)
+            if COOKIES_FILE.exists():
+                opts["cookiefile"] = str(COOKIES_FILE)
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    return ydl.extract_info(url, download="format" in opts)
+            except Exception:
+                pass
+        # Final fallback: remove cookiefile, try without any cookies
+        if opts.pop("cookiefile", None):
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(url, download="format" in opts)
         raise
@@ -249,7 +280,11 @@ def start_download(req: DownloadReq):
             "throttled_rate": 100000000,
             "progress_hooks": [hook],
         }
-        if COOKIES_FILE.exists():
+        if USE_BROWSER_COOKIES:
+            opts["cookiesfrombrowser"] = ["chrome"]
+            opts["js_runtimes"] = {"node": {}}
+            opts["remote_components"] = ["ejs:github"]
+        elif COOKIES_FILE.exists():
             opts["cookiefile"] = str(COOKIES_FILE)
 
         try:
@@ -257,9 +292,33 @@ def start_download(req: DownloadReq):
                 ydl.extract_info(clean, download=True)
             task["filename"] = str(expected_file)
             task["status"] = "completed"
-        except Exception as e:
+        except Exception:
+            # Fallback: remove browser cookies, retry with cookiefile
+            if opts.pop("cookiesfrombrowser", None):
+                opts.pop("js_runtimes", None)
+                opts.pop("remote_components", None)
+                if COOKIES_FILE.exists():
+                    opts["cookiefile"] = str(COOKIES_FILE)
+                try:
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        ydl.extract_info(clean, download=True)
+                    task["filename"] = str(expected_file)
+                    task["status"] = "completed"
+                    return
+                except Exception:
+                    pass
+            # Final fallback: remove cookiefile, try without any cookies
+            if opts.pop("cookiefile", None):
+                try:
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        ydl.extract_info(clean, download=True)
+                    task["filename"] = str(expected_file)
+                    task["status"] = "completed"
+                    return
+                except Exception:
+                    pass
             task["status"] = "error"
-            task["error"] = str(e)
+            task["error"] = "下载失败，请检查网络和登录状态"
 
     threading.Thread(target=worker, daemon=True).start()
     return {"task_id": task_id}
