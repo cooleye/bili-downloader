@@ -8,6 +8,7 @@ import subprocess
 import time
 import uuid
 import threading
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 
@@ -45,32 +46,27 @@ YDL_BASE = {
     },
 }
 
-# Proxy: env var or auto-detect
+# Proxy: env var or auto-detect (with connectivity check)
 _proxy = os.environ.get("YT_DLP_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
 if not _proxy:
     proxy_ports = (7890, 7891, 1080, 7897)
-    # Try localhost first (mirrored WSL2), then gateway IP
-    targets = ["127.0.0.1"]
-    try:
-        gw = subprocess.run(
-            ["ip", "route"], capture_output=True, text=True, timeout=3
-        ).stdout
-        m = re.search(r"default via (\S+)", gw)
-        if m:
-            targets.append(m.group(1))
-    except Exception:
-        pass
-    for host in targets:
-        for port in proxy_ports:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(0.5)
-            if sock.connect_ex((host, port)) == 0:
-                _proxy = f"http://{host}:{port}"
-                sock.close()
-                break
+    for port in proxy_ports:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.3)
+        if sock.connect_ex(("127.0.0.1", port)) == 0:
+            candidate = f"http://127.0.0.1:{port}"
             sock.close()
-        if _proxy:
-            break
+            # 验证代理是否可用
+            try:
+                proxy_handler = urllib.request.ProxyHandler({"http": candidate, "https": candidate})
+                opener = urllib.request.build_opener(proxy_handler)
+                opener.open("https://www.google.com", timeout=3)
+                _proxy = candidate
+                break
+            except Exception:
+                pass
+        else:
+            sock.close()
 
 if _proxy:
     YDL_BASE["proxy"] = _proxy
@@ -237,10 +233,11 @@ def start_download(req: DownloadReq):
     def worker():
         hmap = {"360p": 360, "480p": 480, "720p": 720, "1080p": 1080, "1440p": 1440, "2160p": 2160}
         max_h = hmap.get(req.resolution, 720)
-        fmt = f"bestvideo[height<=?{max_h}]+bestaudio/best[height<=?{max_h}]/best"
+        fmt = f"bestvideo[height<=?{max_h}][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<=?{max_h}]+bestaudio/best[height<=?{max_h}]/best"
 
         def hook(d):
             if d["status"] == "downloading":
+                task["status"] = "downloading"
                 total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
                 dl = d.get("downloaded_bytes", 0)
                 task["progress"] = round(dl / total * 100, 1) if total else 0
@@ -274,7 +271,6 @@ def start_download(req: DownloadReq):
             "format": fmt,
             "outtmpl": str(expected_file.with_suffix(".%(ext)s")),
             "merge_output_format": "mp4",
-            "postprocessor_args": {"ffmpeg": ["-c:v", "copy", "-c:a", "aac"]},
             "throttled_rate": 100000000,
             "progress_hooks": [hook],
         }

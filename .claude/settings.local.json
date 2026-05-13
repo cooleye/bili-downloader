@@ -25,7 +25,13 @@
       "Bash(curl -s -X POST http://localhost:8899/api/download -H 'Content-Type: application/json' -d '{\"url\":\"https://www.youtube.com/watch?v=tJj2_tr8Mx0\",\"resolution\":\"480p\"}')",
       "Bash(file /tmp/test_fix_*.mp4)",
       "Bash(curl -s http://localhost:8899/api/download/968ebd64eef2/status)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(file /tmp/test_dl_*.mp4)",
+      "Bash(ffprobe \"/tmp/test_dl_I Tried China's Best Street Food_480p.mp4\")",
+      "Bash(ffprobe *)",
+      "Bash(file /tmp/test2_*)",
+      "Bash(sort -t'|' -k1)",
+      "Bash(sort -k1)"
     ]
   }
 }
